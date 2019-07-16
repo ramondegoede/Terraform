@@ -1,0 +1,90 @@
+provider "azurerm" {
+    version = "1.28.0"
+
+# you can find the subscription_id and tentant_id on azure by using the following command ater installing the Azure CLI:
+# az login
+# where id = subscription_id
+# and tenantID = tenant_id 
+
+    subscription_id   = "<subscription_id>"
+    tenant_id         = "<tenant_id>"
+}
+
+variable "set" {
+    default = "test"
+}
+
+resource "azurerm_resource_group" "main" {
+    name        = "${var.set}-group-01"
+    location    = "westeurope"
+}
+
+resource "azurerm_virtual_network" "main" {
+    name                = "${var.set}-network"
+    address_space       = ["10.0.0.0/16"]
+    location            = "${azurerm_resource_group.main.location}"
+    resource_group_name = "${azurerm_resource_group.main.name}"
+}
+
+resource "azurerm_subnet" "location-01" {
+    name                    = "location-01"
+    resource_group_name     = "${azurerm_resource_group.main.name}"
+    virtual_network_name    = "${azurerm_virtual_network.main.name}"
+    address_prefix          = "10.0.2.0/24"
+}
+
+resource "azurerm_network_interface" "main" {
+    name                = "${var.set}-nic"
+    location            = "${azurerm_virtual_network.main.location}"
+    resource_group_name = "${azurerm_resource_group.main.name}"
+
+    ip_configuration {
+        name                            = "testconfig-01"
+        subnet_id                       = "${azurerm_subnet.location-01.id}"
+        private_ip_address_allocation   = "Dynamic"
+        public_ip_address_id            = "${azurerm_public_ip.main.id}"
+    }
+}
+
+resource "azurerm_public_ip" "main" {
+    name = "test-public-ip"
+    location = "${azurerm_resource_group.main.location}"
+    resource_group_name = "${azurerm_resource_group.main.name}"
+    allocation_method = "Dynamic"
+}
+
+
+resource "azurerm_virtual_machine" "main" {
+    name                    = "${var.set}-vm"
+    location                = "${azurerm_resource_group.main.location}"
+    resource_group_name     = "${azurerm_resource_group.main.name}"
+    network_interface_ids   = ["${azurerm_network_interface.main.id}"]
+    vm_size                 = "Standard_DS1_v2"
+
+    storage_image_reference {
+        publisher   = "Canonical"
+        offer       = "UbuntuServer"
+        sku         = "16.04-LTS"
+        version     = "latest"
+    }
+
+    storage_os_disk {
+        name              = "myosdisk1"
+        caching           = "ReadWrite"
+        create_option     = "FromImage"
+        managed_disk_type = "Standard_LRS"
+    }
+
+    os_profile {
+        computer_name  = "hostname"
+        admin_username = "testadmin"
+        admin_password = "Password1234!"
+    }
+    os_profile_linux_config {
+        disable_password_authentication = false
+    }
+    tags = {
+        environment = "test"
+  }
+}
+
